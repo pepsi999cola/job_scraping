@@ -11,6 +11,8 @@ use Carbon\Carbon;
 class ScrapeMynavi extends Command
 {
     const HOST ='https://tenshoku.mynavi.jp/';
+    const FILE_PATH = 'app/mynavi_jobs.csv';
+    const PAGE_NUM = 2;
     /**
      * The name and signature of the console command.
      *
@@ -45,6 +47,7 @@ class ScrapeMynavi extends Command
         $this->truncateTables();
         $this->saveUrls();
         $this->saveJobs();
+        $this->exportCsv();
     }
 
     private function truncateTables()
@@ -55,7 +58,7 @@ class ScrapeMynavi extends Command
 
     private function saveUrls()
     {
-        foreach (range(1, 1) as $num){
+        foreach (range(1, $this::PAGE_NUM) as $num){
             $url = $this::HOST .'list/pg' . $num . '/';
             $crawler = \Goutte::request('GET', $url);;
             $urls= $crawler->filter('.cassetteRecruit__copy > a')->each(function ($node) {
@@ -67,7 +70,7 @@ class ScrapeMynavi extends Command
                 ];
             });
             DB::table('mynavi_urls')->insert($urls);
-            //sleep(30);
+            sleep(30);
         }
     }
 
@@ -83,7 +86,7 @@ class ScrapeMynavi extends Command
                 'company_name' => $this->getCompanyName($crawler),
                 'features' => $this->getFeatures($crawler),
             ]);
-            break;
+            // break;
             sleep(30);
         }
     }
@@ -106,5 +109,30 @@ class ScrapeMynavi extends Command
             return $node->text();
         });
         return implode(',', $features);
+    }
+
+    private function exportCsv()
+    {
+        $file = fopen(storage_path($this::FILE_PATH),'w');
+        if(!$file){
+            throw new \Exception('ファイルの作成に失敗しました');
+        }
+        if(!fputcsv($file,['id', 'url', 'title', 'company_name', 'features'])){
+            throw new \Exception('ヘッダーの作成に失敗しました');
+        }
+
+        foreach(MynaviJobs::all() as $job){
+            if(!fputcsv($file,[
+                $job->id,
+                $job->url,
+                $job->title,
+                $job->company_name,
+                $job->features,
+            ])){
+                throw new \Exception('ボディの書き込みに失敗しました');
+            }
+        }
+        
+        fclose($file);
     }
 }
